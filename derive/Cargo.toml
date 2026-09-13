@@ -22,6 +22,7 @@ proc-macro = true
 syn = "3"
 quote = "1"
 proc-macro2 = "1.0.60"
+proc-macro-crate = "2.0.0"
 
 [dev-dependencies]
 bytemuck = { path = "../", features = ["derive"] }

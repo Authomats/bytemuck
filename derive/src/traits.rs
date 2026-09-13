@@ -2,12 +2,13 @@
 use std::{cmp, convert::TryFrom};
 
 use proc_macro2::{Ident, Span, TokenStream, TokenTree};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::{
+  Result,
   parse::{Parse, ParseStream, Parser},
   punctuated::Punctuated,
   spanned::Spanned,
-  Result, *,
+  *,
 };
 
 macro_rules! bail {
@@ -169,7 +170,9 @@ impl Derivable for Zeroable {
           repr.repr,
           Repr::C | Repr::Integer(_) | Repr::CWithDiscriminant(_)
         ) {
-          bail!("Zeroable requires the enum to be an explicit #[repr(Int)] and/or #[repr(C)]")
+          bail!(
+            "Zeroable requires the enum to be an explicit #[repr(Int)] and/or #[repr(C)]"
+          )
         }
 
         // We ensure there is a zero variant in `asserts`, since it is needed
@@ -236,9 +239,11 @@ impl Derivable for NoUninit {
       Data::Struct(_) => match repr.repr {
         Repr::C | Repr::Transparent => Ok(()),
         _ if repr.packed.is_some() => Ok(()),
-        _ => bail!("NoUninit requires the struct to be #[repr(C)] or #[repr(transparent)]"),
+        _ => bail!(
+          "NoUninit requires the struct to be #[repr(C)] or #[repr(transparent)]"
+        ),
       },
-      Data::Enum(DataEnum { variants,.. }) => {
+      Data::Enum(DataEnum { variants, .. }) => {
         if !enum_has_fields(variants.iter()) {
           if matches!(repr.repr, Repr::C | Repr::Integer(_)) {
             Ok(())
@@ -246,12 +251,16 @@ impl Derivable for NoUninit {
             bail!("NoUninit requires the enum to be #[repr(C)] or #[repr(Int)]")
           }
         } else if matches!(repr.repr, Repr::Rust) {
-          bail!("NoUninit requires an explicit repr annotation because `repr(Rust)` doesn't have a specified type layout")
+          bail!(
+            "NoUninit requires an explicit repr annotation because `repr(Rust)` doesn't have a specified type layout"
+          )
         } else {
           Ok(())
         }
-      },
-      Data::Union(_) => bail!("NoUninit can only be derived on enums and structs")
+      }
+      Data::Union(_) => {
+        bail!("NoUninit can only be derived on enums and structs")
+      }
     }
   }
 
@@ -372,22 +381,30 @@ impl Derivable for CheckedBitPattern {
     match ty {
       Data::Struct(_) => match repr.repr {
         Repr::C | Repr::Transparent => Ok(()),
-        _ => bail!("CheckedBitPattern derive requires the struct to be #[repr(C)] or #[repr(transparent)]"),
+        _ => bail!(
+          "CheckedBitPattern derive requires the struct to be #[repr(C)] or #[repr(transparent)]"
+        ),
       },
-      Data::Enum(DataEnum { variants,.. }) => {
-        if !enum_has_fields(variants.iter()){
+      Data::Enum(DataEnum { variants, .. }) => {
+        if !enum_has_fields(variants.iter()) {
           if matches!(repr.repr, Repr::C | Repr::Integer(_)) {
             Ok(())
           } else {
-            bail!("CheckedBitPattern requires the enum to be #[repr(C)] or #[repr(Int)]")
+            bail!(
+              "CheckedBitPattern requires the enum to be #[repr(C)] or #[repr(Int)]"
+            )
           }
         } else if matches!(repr.repr, Repr::Rust) {
-          bail!("CheckedBitPattern requires an explicit repr annotation because `repr(Rust)` doesn't have a specified type layout")
+          bail!(
+            "CheckedBitPattern requires an explicit repr annotation because `repr(Rust)` doesn't have a specified type layout"
+          )
         } else {
           Ok(())
         }
       }
-      Data::Union(_) => bail!("CheckedBitPattern can only be derived on enums and structs")
+      Data::Union(_) => {
+        bail!("CheckedBitPattern can only be derived on enums and structs")
+      }
     }
   }
 
@@ -395,7 +412,9 @@ impl Derivable for CheckedBitPattern {
     input: &DeriveInput, crate_name: &TokenStream,
   ) -> Result<TokenStream> {
     if !input.generics.params.is_empty() {
-      bail!("CheckedBitPattern cannot be derived for structs containing generic parameters");
+      bail!(
+        "CheckedBitPattern cannot be derived for structs containing generic parameters"
+      );
     }
 
     match &input.data {
@@ -468,13 +487,17 @@ impl Derivable for TransparentWrapper {
   fn ident(input: &DeriveInput, crate_name: &TokenStream) -> Result<syn::Path> {
     let fields = get_struct_fields(input)?;
 
-    let WrappedType { wrapped_type: ty, .. } =
-      match Self::get_wrapped_type(&input.attrs, &fields) {
-        Some(ty) => ty,
-        None => bail!("when deriving TransparentWrapper for a struct with more \
+    let WrappedType { wrapped_type: ty, .. } = match Self::get_wrapped_type(
+      &input.attrs,
+      &fields,
+    ) {
+      Some(ty) => ty,
+      None => bail!(
+        "when deriving TransparentWrapper for a struct with more \
                        than one field, you need to specify the transparent field \
-                       using #[transparent(T)]"),
-      };
+                       using #[transparent(T)]"
+      ),
+    };
 
     Ok(syn::parse_quote!(#crate_name::TransparentWrapper<#ty>))
   }
@@ -499,10 +522,12 @@ impl Derivable for TransparentWrapper {
       if field_ty.to_token_stream().to_string() == wrapped_type {
         if wrapped_field_ty.is_some() {
           if explicit {
-            bail!("TransparentWrapper must have one field of the wrapped type. \
+            bail!(
+              "TransparentWrapper must have one field of the wrapped type. \
                    The type given in `#[transparent(Type)]` must match tokenwise \
                    with the type in the struct definition, not just be the same type. \
-                   You may be able to use a type alias to work around this limitation.");
+                   You may be able to use a type alias to work around this limitation."
+            );
           } else {
             bail!("TransparentWrapper must have one field of the wrapped type");
           }
@@ -1337,11 +1362,7 @@ enum Repr {
 
 impl Repr {
   fn as_integer(&self) -> Option<IntegerRepr> {
-    if let Self::Integer(v) = self {
-      Some(*v)
-    } else {
-      None
-    }
+    if let Self::Integer(v) = self { Some(*v) } else { None }
   }
 }
 
@@ -1529,7 +1550,7 @@ fn parse_int_expr(expr: &Expr) -> Result<i128> {
 mod tests {
   use syn::parse_quote;
 
-  use super::{get_repr, IntegerRepr, Repr, Representation};
+  use super::{IntegerRepr, Repr, Representation, get_repr};
 
   #[test]
   fn parse_basic_repr() {
@@ -1608,7 +1629,22 @@ mod tests {
 pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
   const ATTR_NAME: &'static str = "crate";
 
-  let mut crate_name = quote!(::bytemuck);
+  // Check if user depends on hicore
+  let should_fake_original = match proc_macro_crate::crate_name("hicore") {
+    Err(_) | Ok(proc_macro_crate::FoundCrate::Itself) => true,
+    Ok(proc_macro_crate::FoundCrate::Name(name)) => {
+      debug_assert_eq!(&name, "hicore");
+      false
+    }
+  };
+
+  let mut crate_name = if should_fake_original {
+    quote!(::bytemuck)
+  } else {
+    // Custom modification
+    quote!(::hicore::bytemuck)
+  };
+
   for attr in &input.attrs {
     if !attr.path().is_ident("bytemuck") {
       continue;
@@ -1621,6 +1657,10 @@ pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
         while let syn::Expr::Group(e) = value {
           value = &e.expr;
         }
+
+        // Custom modification
+        panic!("Do not modify the crate path of bytemuck imported via hicore, include it yourself if you want to do that!");
+        #[allow(unreachable_code)]
         if let syn::Expr::Lit(syn::ExprLit {
           lit: syn::Lit::Str(lit), ..
         }) = value
