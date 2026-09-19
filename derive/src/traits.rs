@@ -1636,7 +1636,6 @@ pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
   let should_fake_original =
       proc_macro_crate::crate_name("hicore").is_err() && proc_macro_crate::crate_name("hicore_micro").is_err();
 
-
   let mut krate = None;
   for attr in &input.attrs {
     if !attr.path().is_ident("bytemuck") {
