@@ -1627,24 +1627,17 @@ mod tests {
 }
 
 pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
+  use syn::spanned::Spanned;
+  use quote::quote_spanned;
+
   const ATTR_NAME: &'static str = "crate";
 
-  // Check if user depends on hicore
-  let should_fake_original = match proc_macro_crate::crate_name("hicore") {
-    Err(_) | Ok(proc_macro_crate::FoundCrate::Itself) => true,
-    Ok(proc_macro_crate::FoundCrate::Name(name)) => {
-      debug_assert_eq!(&name, "hicore");
-      false
-    }
-  };
+  // Check if user depends on `hicore` or `hicore_micro`.
+  let should_fake_original =
+      proc_macro_crate::crate_name("hicore").is_err() && proc_macro_crate::crate_name("hicore_micro").is_err();
 
-  let mut crate_name = if should_fake_original {
-    quote!(::bytemuck)
-  } else {
-    // Custom modification
-    quote!(::hicore::bytemuck)
-  };
 
+  let mut krate = None;
   for attr in &input.attrs {
     if !attr.path().is_ident("bytemuck") {
       continue;
@@ -1660,6 +1653,7 @@ pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
 
         // Custom modification
         panic!("Do not modify the crate path of bytemuck imported via hicore, include it yourself if you want to do that!");
+        
         #[allow(unreachable_code)]
         if let syn::Expr::Lit(syn::ExprLit {
           lit: syn::Lit::Str(lit), ..
@@ -1675,18 +1669,26 @@ pub fn bytemuck_crate_name(input: &DeriveInput) -> TokenStream {
               bail!(format!("Failed to parse path: {:?}", lit.value()))
             }
           };
-          crate_name = path.into_token_stream();
+          krate = Some(path);
         } else {
           bail!(
             "Expected bytemuck `crate` attribute to be a string: `crate = \"...\"`",
           )
         }
       }
+ 
       Ok(())
     }).unwrap();
   }
 
-  return crate_name;
+  match (should_fake_original, krate) {
+      (true, None) => quote! { ::bytemuck },
+      (true, Some(krate)) => quote_spanned! { krate.span() => #krate },
+      (false, None) => quote! { ::hicore::bytemuck },
+      (false, Some(_)) => {
+          panic!("Cannot change path of modified bytemuck imported via hicore, import it by yourself to do that!")
+      }
+  }
 }
 
 const GENERATED_TYPE_DOCUMENTATION: &str =
